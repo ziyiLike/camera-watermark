@@ -1,0 +1,33 @@
+rootProject.name = 'CameraWatermark'
+
+// 使用标准路径（适用于 npm/yarn）或 pnpm
+def cliPlatformAndroidPath = file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle")
+if (!cliPlatformAndroidPath.exists()) {
+    // 尝试 pnpm 路径
+    cliPlatformAndroidPath = file("../node_modules/.pnpm/@react-native-community+cli-platform-android@*/node_modules/@react-native-community/cli-platform-android/native_modules.gradle")
+    def files = fileTree(dir: "../node_modules/.pnpm", include: "**/cli-platform-android/native_modules.gradle")
+    if (files.files.size() > 0) {
+        cliPlatformAndroidPath = files.files[0]
+    }
+}
+
+if (cliPlatformAndroidPath.exists()) {
+    apply from: cliPlatformAndroidPath
+    applyNativeModulesSettingsGradle(settings)
+}
+
+include ':app'
+
+// 查找 @react-native/gradle-plugin
+def gradlePluginPath = file("../node_modules/@react-native/gradle-plugin")
+if (!gradlePluginPath.exists()) {
+    def pluginFiles = fileTree(dir: "../node_modules/.pnpm", include: "**/gradle-plugin")
+    if (pluginFiles.files.size() > 0) {
+        gradlePluginPath = pluginFiles.files[0]
+    }
+}
+
+if (gradlePluginPath.exists()) {
+    includeBuild(gradlePluginPath.getAbsolutePath())
+}
+

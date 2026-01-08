@@ -1,0 +1,54 @@
+buildscript {
+    ext {
+        buildToolsVersion = "34.0.0"
+        minSdkVersion = 21
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+        ndkVersion = "25.1.8937393"
+        kotlinVersion = "1.8.0"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.4.2")
+        // React Native gradle plugin 通过 includeBuild 引入，不需要在这里添加
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+        
+        // JSC Android (本地路径，如果存在)
+        def jscPath = file("$rootDir/../node_modules/jsc-android/dist")
+        if (!jscPath.exists()) {
+            def jscFiles = fileTree(dir: "$rootDir/../node_modules/.pnpm", include: "**/jsc-android/dist")
+            if (jscFiles.files.size() > 0) {
+                jscPath = jscFiles.files[0]
+            }
+        }
+        if (jscPath.exists()) {
+            maven {
+                url(jscPath.getAbsolutePath())
+            }
+        }
+    }
+    
+    // 强制所有子项目使用 react-android 而不是 react-native
+    configurations.all {
+        resolutionStrategy {
+            force "com.facebook.react:react-android:0.73.0"
+            eachDependency { details ->
+                if (details.requested.group == 'com.facebook.react' && details.requested.name == 'react-native') {
+                    details.useTarget "com.facebook.react:react-android:0.73.0"
+                }
+            }
+        }
+    }
+}
+

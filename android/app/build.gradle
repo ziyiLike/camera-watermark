@@ -1,0 +1,166 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+
+// 尝试应用 native modules（如果存在）
+def nativeModulesFile = file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle")
+if (!nativeModulesFile.exists()) {
+    def files = fileTree(dir: "../../node_modules/.pnpm", include: "**/cli-platform-android/native_modules.gradle")
+    if (files.files.size() > 0) {
+        nativeModulesFile = files.files[0]
+    }
+}
+if (nativeModulesFile.exists()) {
+    apply from: nativeModulesFile
+    applyNativeModulesAppBuildGradle(project)
+}
+
+// 打包 JavaScript bundle 的任务 - Debug
+def jsBundleDirDebug = file("$buildDir/intermediates/assets/debug")
+def jsBundleFileDebug = file("$jsBundleDirDebug/index.android.bundle")
+
+task bundleDebugJsAndAssets(type: Exec) {
+    doFirst {
+        jsBundleDirDebug.mkdirs()
+    }
+    workingDir("../../")
+    commandLine("npx", "react-native", "bundle",
+        "--platform", "android",
+        "--dev", "false",
+        "--entry-file", "index.js",
+        "--bundle-output", jsBundleFileDebug.getAbsolutePath(),
+        "--assets-dest", jsBundleDirDebug.getAbsolutePath()
+    )
+    // 标记为总是执行，确保每次构建都重新打包
+    outputs.upToDateWhen { false }
+}
+
+// 打包 JavaScript bundle 的任务 - Release
+def jsBundleDirRelease = file("$buildDir/intermediates/assets/release")
+def jsBundleFileRelease = file("$jsBundleDirRelease/index.android.bundle")
+
+task bundleReleaseJsAndAssets(type: Exec) {
+    doFirst {
+        jsBundleDirRelease.mkdirs()
+    }
+    workingDir("../../")
+    commandLine("npx", "react-native", "bundle",
+        "--platform", "android",
+        "--dev", "false",
+        "--entry-file", "index.js",
+        "--bundle-output", jsBundleFileRelease.getAbsolutePath(),
+        "--assets-dest", jsBundleDirRelease.getAbsolutePath()
+    )
+    // 标记为总是执行，确保每次构建都重新打包
+    outputs.upToDateWhen { false }
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    
+    // 确保 bundle 文件不被压缩
+    aaptOptions {
+        noCompress 'bundle'
+    }
+
+    namespace "com.camerawatermark"
+    defaultConfig {
+        applicationId "com.camerawatermark"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 2
+        versionName "1.1"
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            // 确保 bundle 不被压缩
+            aaptOptions {
+                noCompress 'bundle'
+            }
+        }
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            // 跳过资源验证以解决 SDK 35 兼容性问题
+            aaptOptions {
+                noCompress 'bundle'
+            }
+        }
+    }
+    
+    // 配置 assets 目录 - 确保 bundle 被打包
+    sourceSets {
+        debug {
+            assets.srcDirs = ["$buildDir/intermediates/assets/debug", "src/main/assets"]
+        }
+        release {
+            assets.srcDirs = ["$buildDir/intermediates/assets/release", "src/main/assets"]
+        }
+    }
+}
+
+// 在构建前打包 bundle - 确保总是执行
+project.afterEvaluate {
+    // Debug 构建的 bundle 任务
+    preDebugBuild.dependsOn("bundleDebugJsAndAssets")
+    
+    // Release 构建的 bundle 任务
+    preReleaseBuild.dependsOn("bundleReleaseJsAndAssets")
+    
+    // 确保 bundle 任务在 mergeAssets 之前执行
+    tasks.whenTaskAdded { task ->
+        if (task.name == "mergeDebugAssets") {
+            task.dependsOn("bundleDebugJsAndAssets")
+        }
+        if (task.name == "mergeReleaseAssets") {
+            task.dependsOn("bundleReleaseJsAndAssets")
+        }
+        // 在 assembleDebug 之前也确保执行
+        if (task.name == "assembleDebug") {
+            task.dependsOn("bundleDebugJsAndAssets")
+        }
+        // 在 assembleRelease 之前也确保执行
+        if (task.name == "assembleRelease") {
+            task.dependsOn("bundleReleaseJsAndAssets")
+        }
+    }
+    
+    // 强制在 packageDebug 之前执行
+    tasks.named("packageDebug").configure {
+        dependsOn("bundleDebugJsAndAssets")
+    }
+    
+    // 强制在 packageRelease 之前执行
+    tasks.named("packageRelease").configure {
+        dependsOn("bundleReleaseJsAndAssets")
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    
+    // React Native - 指定版本号 0.73.0
+    implementation("com.facebook.react:react-android:0.73.0")
+    implementation("com.facebook.react:hermes-android:0.73.0")
+    
+    // Kotlin
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$rootProject.ext.kotlinVersion"
+    
+    // AndroidX
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    // FileProvider 支持
+    implementation 'androidx.core:core:1.9.0'
+}
+
